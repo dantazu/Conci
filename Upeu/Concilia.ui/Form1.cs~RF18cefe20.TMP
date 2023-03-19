@@ -1,0 +1,2209 @@
+﻿using ExcelDataReader;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.IO;
+using System.Linq;
+using Excel = Microsoft.Office.Interop.Excel;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using OfficeOpenXml;
+using OfficeOpenXml.Style;
+using System.Collections;
+using MoreLinq;
+using ProgressBar;
+using System.Diagnostics;
+
+namespace Concilia.ui
+    {
+    public partial class Form1 : Form
+        {
+        public Form1()
+            {
+            InitializeComponent();
+            }
+        bool check;
+        OpenFileDialog diag;
+        private List<ComparabancosBcp> ListComparabcp =  null;
+        private List<ComparabancosUpeu> ListComparaupeu = null;
+        List<ComparabancosComision> listComparaComi =  null;
+        private List<ComparabancosUpeu> ListPendienteExtra = null;
+
+        List<UnidosUpeuyBancos> ListaUnidosUyB = null;
+        private List<BancoUpeu> listaPendConMayorUpeu = null;
+        private List<BancoBCP> listaPendConBancos = null;
+        private List<BancoUpeu> listaPendConMayorUpeuVisa = null;
+        List<BancoUpeu> listaMayorUpeu = null;
+        List<BancoBCP> listaBancos = null;
+        List<Cafetin> listaCafetin = null;
+        List<Cafetin> listaCafetinAux = null;
+        List<Cafetin> listaCafetinGroup = null;
+        List<BancoBCP> listaBancoVisa = null;
+        List<BancoUpeu> listaMayorVisa = null;
+        List<Cafetin> listaMasterC = null;
+       
+        List<Cafetin> listaMasterCGroup = null;
+        List<Cafetin> listaMasterAEx = null;
+        List<Cafetin> listaMasterAExGroup = null;
+        DataTable dtVisanet;
+        DataTable dtMasterC;
+        DataTable dtMasterAmerEx;
+        DataTableCollection dtc = null;
+        int MesOperacion = 0;
+        public int termino = 0;
+        List<Cafetin> listgraxu = null;
+        public string CuentaContableUpeu { get; set; } 
+            public decimal SaldoIniUpeu { get; set; } 
+            public decimal SaldoFiNUpeu { get; set; }
+
+            public string CuentaContableBanco { get; set; }
+            public decimal SaldoIniBanco { get; set; }
+            public decimal SaldoFiNBanco { get; set; }
+        public string NombreBanco { get; set; }
+        public decimal SaldoIniPendiente { get; set; }
+        public DateTime GetLastDayOf(DateTime date)
+            {
+            return new DateTime(date.Year, date.Month, DateTime.DaysInMonth(date.Year, date.Month));
+            }
+
+        private void ExceltoList( DataTableCollection resultDataColl)
+            {
+            listaPendConBancos = new List<BancoBCP>();
+            listaPendConMayorUpeu = new List<BancoUpeu>();
+           
+            ListComparaupeu = new List<ComparabancosUpeu>();
+            ListComparabcp = new List<ComparabancosBcp>();
+            listComparaComi = new List<ComparabancosComision>();
+           // listaCafetin = new List<Cafetin>();
+            listaCafetinAux = new List<Cafetin>();
+            listaCafetinGroup = new List<Cafetin>();
+
+            listaMasterC = new List<Cafetin>();
+            listaMasterCGroup = new List<Cafetin>();
+
+            listaMasterAEx = new List<Cafetin>();
+
+            listaMayorVisa = new List<BancoUpeu>();
+            listaPendConMayorUpeuVisa = new List<BancoUpeu>();
+            ListPendienteExtra = new List<ComparabancosUpeu>();
+
+            listaMayorUpeu = new List<BancoUpeu>();
+            listaBancoVisa = new List<BancoBCP>();
+            listaBancos = new List<BancoBCP>();
+
+            ListaUnidosUyB = new List<UnidosUpeuyBancos>();
+            listgraxu = new List<Cafetin>();
+            var result = ExcelUtil.ListaSheets;
+            #region CAFETIN 
+            dtVisanet = new DataTable();
+            dtVisanet = resultDataColl[result[0]];
+            MesOperacion = DateTime.Parse( dtVisanet.Rows[2][0].ToString()).Month;
+            int colcaf = dtVisanet.Columns.Count;
+            if (colcaf>=9){
+                MessageBox.Show("La hoja " + result[0] + " tiene " + colcaf + " filas Solo debe tener 8  de A a la H ");
+               
+                termino = 1;
+                return;
+                }
+          
+           
+            listaCafetinAux = ExcelUtil.GetListVisanet(dtVisanet);
+
+           
+
+            var agrgruu = listaCafetinAux.GroupBy(p => new { p.CodigoPos, p.FechaAbono });
+            foreach (var item in agrgruu)
+                {
+                string llave = item.Key.CodigoPos;
+                string llave1 = item.Key.FechaAbono;
+                decimal impora = 0;
+                decimal import = 0;
+                foreach (var itemsub in item)
+                    {
+                    if (!itemsub.NroOpe.Equals(string.Empty))
+                        {
+                        import += itemsub.ImporteTran;
+                        }
+                    
+                        impora += itemsub.NetoAbonar;
+                    }
+                var rrr = new Cafetin { CodigoPos = item.Key.CodigoPos, FechaAbono = item.Key.FechaAbono,ImporteTran = import, NetoAbonar = impora, Diferencia = (import- impora),Whoyo=item.First().Whoyo };
+
+                listgraxu.Add(rrr);
+                    }
+            #endregion
+
+            #region PEND
+            DataTable dtPendientes = resultDataColl[result[1]];
+            int colcap = dtPendientes.Columns.Count;
+            if (colcap >= 9)
+                {
+                MessageBox.Show("La hoja " + result[1] + " tiene " + colcap + " filas solo debe tener 8  de A a la H ");
+                termino = 1;
+                return;
+                }
+
+            // pendientes upeu se une con bancos
+            //solo debe y haber de upeu
+            listaPendConBancos = ExcelUtil.PopulateinCollectionPEN_Upeu(dtPendientes);
+            //pendiente banco se une con upeu
+            //saco solo debe y haber de bancos
+            var auxlistaPendConMayorUpeu = ExcelUtil.PopulateinCollectionPEN_Banco(dtPendientes);
+
+            listaPendConMayorUpeu = auxlistaPendConMayorUpeu.Where(w => w.CodigoPos == "0").ToList();
+            listaPendConMayorUpeuVisa = auxlistaPendConMayorUpeu.Where(w => w.CodigoPos != "0").ToList();
+
+            #endregion
+
+            #region MAYOR UPEU
+            DataTable dtupeu = resultDataColl[result[2]];
+            // this.lblCodigoIniU.Text = dtupeu.Rows.Count.ToString();
+            int colcau = dtupeu.Columns.Count;
+            if (colcau >= 9)
+                {
+                MessageBox.Show("La hoja " + result[2] + " tiene " + colcau + " filas solo debe tener 8  de A a la I ");
+                termino = 1;
+                return;
+                }
+            var AuxlistaMayorUpeu = ExcelUtil.PopulateinCollectionUpeu(dtupeu);
+
+            //datos con visa
+            var auxlistaMayorVisa = AuxlistaMayorUpeu.Where(w => w.CodigoPos != "0").ToList();//   con terminal
+
+            listaMayorUpeu = AuxlistaMayorUpeu.Where(w => w.CodigoPos == "0").ToList();// sin terminal may upe normal
+
+          
+            /// Uno pendiente con terminal y mayor con terminal
+
+            var xxlistaMayorVisa = (from c1 in auxlistaMayorVisa
+                                    select c1)
+                                  .Union
+                                  (from c2 in listaPendConMayorUpeuVisa
+                                   select c2);
+            listaMayorVisa = xxlistaMayorVisa.ToList();
+
+
+            try
+                {
+                CuentaContableUpeu = dtupeu.Rows[1][1].ToString();
+                SaldoIniUpeu = decimal.Parse(dtupeu.Rows[2][1].ToString());
+                SaldoFiNUpeu = decimal.Parse(dtupeu.Rows[3][1].ToString());
+                }
+            catch
+                {
+                MessageBox.Show("Mala configuracion del encabezado B2: Nro cuenta B3: Saldo Inicial B4: saldo final");
+                return;
+                }
+
+
+            #endregion
+
+            #region BANCO
+            DataTable dtubbva = resultDataColl[result[3]];
+            // this.lblCodigoIniB.Text = dtubbva.Rows.Count.ToString();
+            int colcab = dtubbva.Columns.Count;
+            if (colcab >= 6)
+                {
+                MessageBox.Show("La hoja " + result[3] + " tiene " + colcab + " filas solo debe tener 5  de A a la E ");
+                termino = 1;
+                return;
+                }
+            var AuxlistaBancos = ExcelUtil.PopulateinCollectionBCP(dtubbva);
+
+            listaBancoVisa = AuxlistaBancos.Where(w => w.NroOpe.Equals("VISANET")).ToList();
+
+            listaBancos = AuxlistaBancos.Where(w => w.NroOpe != "VISANET").ToList();
+            var xx = listaBancos.Where(w => w.NroOpe.Equals("519981121")).ToList();
+            if (xx.Count > 0)
+                {
+                string fff = "";
+                }
+            try
+                {
+                CuentaContableBanco = dtubbva.Rows[1][1].ToString();
+                NombreBanco = dtubbva.Rows[1][2].ToString();
+                SaldoIniBanco = decimal.Parse(dtubbva.Rows[2][1].ToString());
+                SaldoFiNBanco = decimal.Parse(dtubbva.Rows[3][1].ToString());
+                }
+            catch
+                {
+                MessageBox.Show("Mala configuracion del encabezado B2: Nro cuenta B3 Saldo Inicial B4: saldo final C2: Nombre del banco");
+                return;
+                }
+            if (NombreBanco.Equals(string.Empty))
+                {
+                MessageBox.Show("Ingrese Nombre del banco");
+                return;
+                }
+            #endregion
+
+            #region Mastercard
+            dtMasterC = new DataTable();
+            dtMasterC = resultDataColl[result[4]];
+            MesOperacion = DateTime.Parse(dtMasterC.Rows[2][0].ToString()).Month;
+            int colcaM = dtMasterC.Columns.Count;
+            if (colcaM >= 8)
+                {
+                MessageBox.Show("La hoja " + result[4] + " tiene " + colcaM + " filas Solo debe tener 7  de A a la G ");
+
+                termino = 1;
+                return;
+                }
+
+            listaMasterC = ExcelUtil.GetListMastercard(dtMasterC);
+
+            listaMasterCGroup = (from r in listaMasterC
+                                 group r by new { r.CodigoPos, r.FechaProceso, r.NombreComercial } into g
+                                 orderby g.Key.FechaProceso
+                                 select new Cafetin {
+                                     CodigoPos = g.Key.CodigoPos
+                                     , FechaProceso = g.Key.FechaProceso
+                                     , FechaAbono = g.Last().FechaAbono
+                                     , NetoAbonar = g.Sum(w => w.NetoAbonar)
+                                     , ImporteTran = g.Sum(w => w.ImporteTran)
+                                     , Diferencia = g.Sum(w => w.ImporteTran) - g.Sum(w => w.NetoAbonar)
+                                     , Whoyo = g.First().Whoyo
+                                     }
+
+                                     ).ToList();
+          var ll= listaMasterC.Where(w => w.CodigoPos.Equals("1106872")).ToList();
+
+
+            #endregion
+
+            #region American expr
+            dtMasterAmerEx = new DataTable();
+            dtMasterAmerEx = resultDataColl[result[5]];
+            MesOperacion = DateTime.Parse(dtMasterAmerEx.Rows[2][0].ToString()).Month;
+            int colcaAm = dtMasterC.Columns.Count;
+            if (colcaAm >= 8)
+                {
+                MessageBox.Show("La hoja " + result[5] + " tiene " + colcaAm + " filas Solo debe tener 7  de A a la G ");
+
+                termino = 1;
+                return;
+                }
+
+            listaMasterAEx = ExcelUtil.GetListAmericanEExp(dtMasterAmerEx);
+
+            listaMasterAExGroup = (from r in listaMasterAEx
+                                   group r by new { r.CodigoPos, r.FechaProceso, r.NombreComercial } into g
+                                 orderby g.Key.FechaProceso
+                                 select new Cafetin {
+                                     CodigoPos = g.Key.CodigoPos
+                                     , FechaProceso = g.Key.FechaProceso
+                                     , FechaAbono = g.Last().FechaAbono
+                                     , NetoAbonar = g.Sum(w => w.NetoAbonar)
+                                     , ImporteTran = g.Sum(w => w.ImporteTran)
+                                     , Diferencia = g.Sum(w => w.ImporteTran) - g.Sum(w => w.NetoAbonar)
+                                     , Whoyo = g.First().Whoyo
+                                     }
+
+                                     ).ToList();
+            //var ll = listaMasterC.Where(w => w.CodigoPos.Equals("1106872")).ToList();
+
+
+            #endregion
+
+
+
+            listaCafetin = ((from c1 in listaCafetinAux
+                             select c1)
+                               .Union
+                               (from c2 in listaMasterC
+                                select c2)
+                                .Union
+                                (from c3 in listaMasterAEx
+                                 select c3)
+                                ).ToList();
+                               
+
+            listaCafetinGroup = ((from c1 in listgraxu
+                                  select c1)
+                              .Union
+                              (from c2 in listaMasterCGroup
+                               select c2)
+                                .Union
+                              (from c3 in listaMasterAExGroup
+                               select c3)
+                               ).ToList();
+
+            }
+       
+        public void ProcesarDatos()
+            {
+            // pendientes une con bancos
+            var listasPendienteUpeuYBancos = (from c1 in listaPendConBancos
+                                         select c1)
+                                  .Union
+                                  (from c2 in listaBancos
+                                   select c2);
+
+            // pendientes bancos une con mayor upeu
+            var listasPendienteBancoYmayorUpeu = (from c1 in listaPendConMayorUpeu
+                                        select c1)
+                                  .Union
+                                  (from c2 in listaMayorUpeu
+                                   select c2);
+
+            
+
+
+            ComparabancosUpeu objCompupe;
+            ComparabancosBcp objCompbcp;
+            ComparabancosUpeu objCompupeComi;
+            List<ComparabancosUpeu> listAcuComiokv = new List<ComparabancosUpeu>();
+            int j = 0;
+            //codigopos = 0
+            foreach (var item in listasPendienteBancoYmayorUpeu)
+                {
+                //ComparabancosBcp
+                if (item.NroOpe.Equals("725073"))
+                    {
+                    string ss = string.Empty;
+                    }
+
+                var listaduplicado = listasPendienteBancoYmayorUpeu.Where(w => w.NroOpe.ToUpper().Equals(item.NroOpe.ToUpper())).ToList();
+                if (listaduplicado.Count() == 1)
+                    {
+
+                    var lbancopen = listasPendienteUpeuYBancos.Where(w => w.NroOpe.Equals(item.NroOpe.ToUpper())).ToList();
+                    if (lbancopen.Count == 1)
+                        {
+                        if (item.Dh == lbancopen.First().Dh)
+                            {
+                            if (item.Importe == lbancopen.First().Importe)
+                                {
+                                var objUnidos = new UnidosUpeuyBancos();
+                                objUnidos.NroOpeU = item.NroOpe;
+                                objUnidos.FechaRegistroU = item.FechaRegistro;
+                                objUnidos.ReferenciaLibrosU = item.ReferenciaLibros;
+                                objUnidos.DescripcionU = item.Descripcion;
+                                objUnidos.FechaOperacionU = item.FechaOperacion;
+                                objUnidos.ImporteU = item.Importe;
+                                objUnidos.DhU = item.Dh;
+
+                                objUnidos.NroOpeB = lbancopen.First().NroOpe;
+                                objUnidos.FechaOperacionB = lbancopen.First().FechaOperacion;
+                                objUnidos.ImporteB = lbancopen.First().Importe;
+                                objUnidos.DescripcionB = lbancopen.First().Descripcion;
+                                objUnidos.DhB = lbancopen.First().Dh;
+                                ListaUnidosUyB.Add(objUnidos);
+                                }
+                            else 
+                                {
+                                if (lbancopen.First().Descripcion.Contains("TRANSFERENCIA CCE") || lbancopen.First().Descripcion.Contains("EMIS. CHEQ DE GERENCIA"))
+                                    {
+                                    decimal resto = lbancopen.First().Importe - item.Importe;
+                                    var objUnidos = new UnidosUpeuyBancos();
+                                    objUnidos.NroOpeU = item.NroOpe;
+                                    objUnidos.FechaRegistroU = item.FechaRegistro;
+                                    objUnidos.ReferenciaLibrosU = item.ReferenciaLibros;
+                                    objUnidos.DescripcionU = item.Descripcion;
+                                    objUnidos.FechaOperacionU = item.FechaOperacion;
+                                    objUnidos.ImporteU = item.Importe;
+                                    objUnidos.DhU = item.Dh;
+
+                                    objUnidos.NroOpeB = lbancopen.First().NroOpe;
+                                    objUnidos.FechaOperacionB = lbancopen.First().FechaOperacion;
+                                    objUnidos.ImporteB = (lbancopen.First().Importe - resto);
+                                    objUnidos.DescripcionB = lbancopen.First().Descripcion;
+                                    objUnidos.DhB = lbancopen.First().Dh;
+                                    ListaUnidosUyB.Add(objUnidos);
+                                    if (resto > 0)
+                                        {
+                                        objCompupe = new ComparabancosUpeu { FechaOpe = item.FechaRegistro, Descripcion = lbancopen.First().Descripcion, NroOpe = item.NroOpe, Importe = resto, Dh = item.Dh, Pintar = 3, Observacion = "por diferencia", Terminal = item.CodigoPos };
+                                        ListComparaupeu.Add(objCompupe);
+                                        }
+                                    else
+                                        {
+                                        objCompbcp = new ComparabancosBcp { FechaOpe = item.FechaRegistro, Descripcion =item.Descripcion, NroOpe = item.NroOpe, Importe = resto, Dh = item.Dh  == 1 ? 2 : 1, Terminal = item.CodigoPos, Observacion = "por diferencia" };
+                                        ListComparabcp.Add(objCompbcp);
+                                        }
+                                    }
+                                else
+                                    {
+                                    //objCompbcp = new ComparabancosBcp { FechaOpe = item.FechaRegistro, Descripcion = item.Descripcion, NroOpe = item.NroOpe, Importe = item.Importe, Dh = item.Dh = item.Dh == 1 ? 2 : 1, Terminal = item.CodigoPos, Observacion = "por diferencia-otros" };
+                                    //ListComparabcp.Add(objCompbcp);
+                                    var objUnidos = new UnidosUpeuyBancos();
+                                    objUnidos.NroOpeU = item.NroOpe;
+                                    objUnidos.FechaRegistroU = item.FechaRegistro;
+                                    objUnidos.ReferenciaLibrosU = item.ReferenciaLibros;
+                                    objUnidos.DescripcionU = item.Descripcion;
+                                    objUnidos.FechaOperacionU = item.FechaOperacion;
+                                    objUnidos.ImporteU = item.Importe;
+                                    objUnidos.DhU = item.Dh;
+
+                                    objUnidos.NroOpeB = lbancopen.First().NroOpe;
+                                    objUnidos.FechaOperacionB = lbancopen.First().FechaOperacion;
+                                    objUnidos.ImporteB = lbancopen.First().Importe;
+                                    objUnidos.DescripcionB = lbancopen.First().Descripcion;
+                                    objUnidos.DhB = lbancopen.First().Dh;
+                                    
+                                    ListaUnidosUyB.Add(objUnidos);
+                                    }
+                               
+                               
+
+                               
+
+                                }
+                           
+                            }
+                        else
+                            {
+
+                            objCompupe = new ComparabancosUpeu { };
+
+                            objCompbcp = new ComparabancosBcp { FechaOpe = item.FechaRegistro, Descripcion = item.ReferenciaLibros + "-" + item.Descripcion, NroOpe = item.NroOpe, Importe = item.Importe, Dh = item.Dh==1?2:1, Terminal = item.CodigoPos };
+                            ListComparabcp.Add(objCompbcp);
+
+                            }
+                        }
+                    else if (lbancopen.Count == 2)
+                        {
+                        if (lbancopen[0].Importe == lbancopen[1].Importe)
+                            {
+                            if (lbancopen[0].Importe == item.Importe)
+                                {
+                                //se concilia
+                                if (lbancopen[0].Dh != lbancopen[1].Dh)
+                                    {
+                                    //Devolucion
+                                    var objUnidos = new UnidosUpeuyBancos();
+                                    objUnidos.NroOpeU = item.NroOpe;
+                                    objUnidos.FechaRegistroU = item.FechaRegistro;
+                                    objUnidos.ReferenciaLibrosU = item.ReferenciaLibros;
+                                    objUnidos.DescripcionU = item.Descripcion;
+                                    objUnidos.FechaOperacionU = item.FechaOperacion;
+                                    objUnidos.ImporteU = item.Importe;
+                                    objUnidos.DhU = item.Dh;
+
+                                    objUnidos.NroOpeB = lbancopen.First().NroOpe;
+                                    objUnidos.FechaOperacionB = lbancopen.First().FechaOperacion;
+                                    objUnidos.ImporteB = item.Importe;
+                                    objUnidos.DescripcionB = lbancopen.First().Descripcion;
+                                    objUnidos.DhB = lbancopen.First().Dh;
+                                    objUnidos.Terminal = lbancopen.First().CodigoPos;
+                                    
+                                    ListaUnidosUyB.Add(objUnidos);
+                                    }
+                                else
+                                    {
+                                    //FALTA
+                                    string leo = string.Empty;
+                                    }
+                              
+                                }
+                            else
+                                {
+                                //FALTA
+                                string leo = string.Empty;
+                                }
+
+                            }
+                        else
+                            {
+                            // IMPORTES DIFERENTES
+                            foreach (var itemx in lbancopen)
+                                {
+                                if (itemx.Importe == item.Importe)
+                                    {
+                                    var objUnidos = new UnidosUpeuyBancos();
+                                    objUnidos.NroOpeU = item.NroOpe;
+                                    objUnidos.FechaRegistroU = item.FechaRegistro;
+                                    objUnidos.ReferenciaLibrosU = item.ReferenciaLibros;
+                                    objUnidos.DescripcionU = item.Descripcion;
+                                    objUnidos.FechaOperacionU = item.FechaOperacion;
+                                    objUnidos.ImporteU = item.Importe;
+                                    objUnidos.DhU = item.Dh;
+
+                                    objUnidos.NroOpeB = itemx.NroOpe;
+                                    objUnidos.FechaOperacionB = itemx.FechaOperacion;
+                                    objUnidos.ImporteB = itemx.Importe;
+                                    objUnidos.DescripcionB = itemx.Descripcion;
+                                    objUnidos.DhB = itemx.Dh;
+                                    objUnidos.Terminal = itemx.CodigoPos;
+
+                                    ListaUnidosUyB.Add(objUnidos);
+                                    }
+                                else
+                                    {
+                                    objCompbcp = new ComparabancosBcp { FechaOpe = itemx.FechaOperacion, Descripcion = itemx.Descripcion, NroOpe = itemx.NroOpe, Importe = itemx.Importe, Dh = itemx.Dh == 1 ? 2 : 1, Terminal = itemx.CodigoPos };
+
+                                    ListComparabcp.Add(objCompbcp);
+                                    }
+                                }
+                            }
+                        }
+                    else
+                        {
+
+                        objCompbcp = new ComparabancosBcp { FechaOpe = item.FechaRegistro, Descripcion = item.ReferenciaLibros + "-" + item.Descripcion, NroOpe = item.NroOpe, Importe = item.Importe, Dh = item.Dh == 1 ? 2 : 1, Terminal = item.CodigoPos };
+
+                        ListComparabcp.Add(objCompbcp);
+                        }
+
+                    }
+                else if (listaduplicado.Count == 2)
+                    {
+                    int rr = 1;
+                    var lbancopen = listasPendienteUpeuYBancos.Where(w => w.NroOpe.Equals(item.NroOpe) ).ToList();
+                    if (lbancopen.Count > 0)
+                        {
+                        decimal impaux = listaduplicado.Sum(w => w.Importe);
+                        if (impaux==lbancopen.First().Importe)
+                            {
+                            //se concilia
+                          int exist=  ListaUnidosUyB.Where(w => w.NroOpeU == item.NroOpe).ToList().Count();
+                            if (exist==0)
+                                {
+                                var objUnidos = new UnidosUpeuyBancos();
+                                objUnidos.NroOpeU = item.NroOpe;
+                                objUnidos.FechaRegistroU = item.FechaRegistro;
+                                objUnidos.ReferenciaLibrosU = item.ReferenciaLibros;
+                                objUnidos.DescripcionU = item.Descripcion;
+                                objUnidos.FechaOperacionU = item.FechaOperacion;
+                                objUnidos.ImporteU = impaux;
+                                objUnidos.DhU = item.Dh;
+
+                                objUnidos.NroOpeB = lbancopen.First().NroOpe;
+                                objUnidos.FechaOperacionB = lbancopen.First().FechaOperacion;
+                                objUnidos.ImporteB = lbancopen.First().Importe;
+                                objUnidos.DescripcionB = lbancopen.First().Descripcion;
+                                objUnidos.DhB = lbancopen.First().Dh;
+                                objUnidos.Terminal = lbancopen.First().CodigoPos;
+                                ListaUnidosUyB.Add(objUnidos);
+
+                                }
+
+                            }
+                        else
+                            {
+                            if(listaduplicado[0].Importe == listaduplicado[1].Importe)
+                                {
+                                if (listaduplicado[0].Importe== impaux)
+                                    {
+                                    //se concilia
+                                    int exist = ListaUnidosUyB.Where(w => w.NroOpeU == item.NroOpe).ToList().Count();
+                                    if (exist==0)
+                                        {
+                                        var objUnidos = new UnidosUpeuyBancos();
+                                        objUnidos.NroOpeU = listaduplicado[0].NroOpe;
+                                        objUnidos.FechaRegistroU = listaduplicado[0].FechaRegistro;
+                                        objUnidos.ReferenciaLibrosU = listaduplicado[0].ReferenciaLibros;
+                                        objUnidos.DescripcionU = listaduplicado[0].Descripcion;
+                                        objUnidos.FechaOperacionU = listaduplicado[0].FechaOperacion;
+                                        objUnidos.ImporteU = listaduplicado[0].Importe;
+                                        objUnidos.DhU = listaduplicado[0].Dh;
+
+                                        objUnidos.NroOpeB = lbancopen.First().NroOpe;
+                                        objUnidos.FechaOperacionB = lbancopen.First().FechaOperacion;
+                                        objUnidos.ImporteB = impaux;
+                                        objUnidos.DescripcionB = lbancopen.First().Descripcion;
+                                        objUnidos.DhB = lbancopen.First().Dh;
+                                        objUnidos.Terminal = lbancopen.First().CodigoPos;
+                                        ListaUnidosUyB.Add(objUnidos);
+                                        // uno concilia otro a pendiente
+                                        objCompbcp = new ComparabancosBcp { FechaOpe = listaduplicado[1].FechaRegistro, Descripcion = listaduplicado[1].ReferenciaLibros + "-" + listaduplicado[1].Descripcion, NroOpe = listaduplicado[1].NroOpe, Importe = listaduplicado[1].Importe, Dh = listaduplicado[1].Dh == 1 ? 2 : 1, Terminal = listaduplicado[1].CodigoPos, Observacion = "1 de 2 uno concilio" };
+
+                                        ListComparabcp.Add(objCompbcp);
+                                        }
+
+                                    }
+                                else
+                                    {
+                                    int existt = ListComparabcp.Where(w => w.NroOpe == item.NroOpe).ToList().Count;
+                                    if (existt == 0)
+                                        {
+                                        foreach (var itemx in listaduplicado)
+                                            {
+                                            objCompbcp = new ComparabancosBcp { FechaOpe = itemx.FechaRegistro, Descripcion = itemx.ReferenciaLibros + "-" + itemx.Descripcion, NroOpe = itemx.NroOpe, Importe = itemx.Importe, Dh = itemx.Dh == 1 ? 2 : 1, Terminal = itemx.CodigoPos };
+
+                                            ListComparabcp.Add(objCompbcp);
+                                            }
+                                        }
+                                    }
+
+                                }
+                            else
+                                {
+                                //no son iguales montos
+                                //los mando a pendiente excepto  glosa cce lo vere depsues
+                                int existt = ListComparabcp.Where(w => w.NroOpe == item.NroOpe).ToList().Count;
+                                if (existt==0)
+                                    {
+                                    foreach (var itemx in listaduplicado)
+                                        {
+                                        objCompbcp = new ComparabancosBcp { FechaOpe = itemx.FechaRegistro, Descripcion = itemx.ReferenciaLibros + "-" + itemx.Descripcion, NroOpe = itemx.NroOpe, Importe = itemx.Importe, Dh = itemx.Dh == 1 ? 2 : 1, Terminal = itemx.CodigoPos };
+
+                                        ListComparabcp.Add(objCompbcp);
+                                        }
+                                    }
+                               
+                                }
+
+                            }
+
+                        //    //si los montos son iguales falta
+                        //    var objUnidos = new UnidosUpeuyBancos();
+                        //    objUnidos.NroOpeU = itemv.NroOpe;
+                        //    objUnidos.FechaRegistroU = itemv.FechaRegistro;
+                        //    objUnidos.ReferenciaLibrosU = itemv.ReferenciaLibros;
+                        //    objUnidos.DescripcionU = itemv.Descripcion;
+                        //    objUnidos.FechaOperacionU = itemv.FechaOperacion;
+                        //    objUnidos.ImporteU = itemv.Importe;
+                        //    objUnidos.DhU = itemv.Dh;
+
+                        //    objUnidos.NroOpeB = lbancopen.First().NroOpe;
+                        //    objUnidos.FechaOperacionB = DateTime.Parse(lbancopen.First().FechaProceso);
+                        //    objUnidos.ImporteB = lbancopen.First().ImporteTran;
+                        //    objUnidos.DescripcionB = lbancopen.First().NombreComercial;
+                        //    objUnidos.DhB = 1;
+                        //    objUnidos.Terminal = lbancopen.First().CodigoPos;
+                        //    ListaUnidosUyB.Add(objUnidos);
+
+                        }
+
+                        else
+                            {
+                        //compruebo si ya lo adicione a pendiente
+                      int exist=  ListComparabcp.Where(w => w.NroOpe == item.NroOpe).ToList().Count;
+                        if (exist==0)
+                            {
+                            foreach (var itemv in listaduplicado)
+                                {
+                                if (listaduplicado[0].Dh != listaduplicado[1].Dh && listaduplicado[0].Importe == listaduplicado[1].Importe)
+                                    {
+                                    //conciliados por extorno
+
+                                    int existg = ListaUnidosUyB.Where(w => w.NroOpeU == item.NroOpe).ToList().Count();
+                                    if (existg == 0)
+                                        {
+                                        var objUnidos = new UnidosUpeuyBancos();
+                                        objUnidos.NroOpeU = item.NroOpe;
+                                        objUnidos.FechaRegistroU = item.FechaRegistro;
+                                        objUnidos.ReferenciaLibrosU = item.ReferenciaLibros;
+                                        objUnidos.DescripcionU = item.Descripcion;
+                                        objUnidos.FechaOperacionU = item.FechaOperacion;
+                                        objUnidos.ImporteU = listaduplicado[0].Importe;
+                                        objUnidos.DhU = listaduplicado[0].Dh;
+
+                                        objUnidos.NroOpeB = string.Empty;
+                                        objUnidos.FechaOperacionB = DateTime.MaxValue;
+                                        objUnidos.ImporteB = listaduplicado[1].Importe;
+                                        objUnidos.DescripcionB = "Conciliado por Extorno";
+                                        objUnidos.DhB = listaduplicado[1].Dh;
+                                        objUnidos.Terminal = item.CodigoPos;
+                                        ListaUnidosUyB.Add(objUnidos);
+                                        }
+                                    break;
+
+                                    }
+                                else
+                                    {
+
+
+                                    objCompbcp = new ComparabancosBcp { FechaOpe = item.FechaRegistro, Descripcion = item.ReferenciaLibros + "-" + item.Descripcion, NroOpe = item.NroOpe, Importe = item.Importe, Dh = item.Dh == 1 ? 2 : 1, Terminal = item.CodigoPos, Observacion = "" };
+
+                                    ListComparabcp.Add(objCompbcp);
+                                    }
+                                }
+                           
+
+                            }
+                        }
+                       
+                       
+
+                        
+
+
+
+
+
+                        }
+                else if (listaduplicado.Count == 3)
+                    {
+                    //aqui conVISA
+                    var lbancopen1 = listasPendienteUpeuYBancos.Where(w => w.NroOpe.Equals(item.NroOpe.ToUpper())&&w.Importe == item.Importe).ToList();
+                    if (lbancopen1.Count == 1)
+                        {
+                        
+                            var objUnidos = new UnidosUpeuyBancos();
+                            objUnidos.NroOpeU = item.NroOpe;
+                            objUnidos.FechaRegistroU = item.FechaRegistro;
+                            objUnidos.ReferenciaLibrosU = item.ReferenciaLibros;
+                            objUnidos.DescripcionU = item.Descripcion;
+                            objUnidos.FechaOperacionU = item.FechaOperacion;
+                            objUnidos.ImporteU = item.Importe;
+                            objUnidos.DhU = item.Dh;
+
+                            objUnidos.NroOpeB = lbancopen1.First().NroOpe;
+                            objUnidos.FechaOperacionB = lbancopen1.First().FechaOperacion;
+                            objUnidos.ImporteB = lbancopen1.First().Importe;
+                            objUnidos.DescripcionB = lbancopen1.First().Descripcion;
+                            objUnidos.DhB = lbancopen1.First().Dh;
+                            ListaUnidosUyB.Add(objUnidos);
+
+                        }
+                    else
+                        {
+                        objCompbcp = new ComparabancosBcp { FechaOpe = item.FechaRegistro, Descripcion = item.ReferenciaLibros + "-" + item.Descripcion, NroOpe = item.NroOpe, Importe = item.Importe, Dh = item.Dh == 1 ? 2 : 1, Terminal = item.CodigoPos };
+
+                        ListComparabcp.Add(objCompbcp);
+                        }
+                       
+                    
+                    //no oner en pendiente si en banco hay uno
+
+
+                    }
+                }
+            //codigo pos = 1
+            foreach (var itemb in listasPendienteUpeuYBancos)
+                {
+                //ComparabancosUpeu
+                if (itemb.NroOpe.Equals("5258"))
+                    {
+                    string ss = string.Empty;
+                    }
+                //aqui hay duplicados tambien
+               
+
+                var resuam = listasPendienteBancoYmayorUpeu.Where(w => w.NroOpe.ToUpper().Equals(itemb.NroOpe.ToUpper())).ToList();
+
+                //tiene un registro y existe en el otro lado : conciliado
+                // ListaBcpExiste.Add(itemb);
+                if (resuam.Count == 3)
+                    {
+                    //recorrer los tres 
+                    if (resuam[0].Importe == itemb.Importe && resuam[1].Importe == itemb.Importe && resuam[2].Importe == itemb.Importe)
+                        {
+
+                        }
+                    else
+                        {
+
+                        objCompupe = new ComparabancosUpeu { FechaOpe = itemb.FechaOperacion, Descripcion =  itemb.Descripcion, NroOpe = itemb.NroOpe, Importe = itemb.Importe, Dh = itemb.Dh, Pintar = 3, Observacion = "",Terminal =itemb.CodigoPos };
+                        ListComparaupeu.Add(objCompupe);
+                        }
+                    }
+                else if (resuam.Count == 2)
+                    {
+                  var verif =  ListaUnidosUyB.Where(w => w.NroOpeB == itemb.NroOpe).ToList();
+                
+                    if (verif.Count==0)
+                        {
+                        if (resuam[0].Importe == resuam[1].Importe)
+                            {
+
+                            objCompupe = new ComparabancosUpeu { FechaOpe = itemb.FechaOperacion, Descripcion = itemb.Descripcion, NroOpe = itemb.NroOpe, Importe = itemb.Importe, Dh = itemb.Dh, Pintar = 3, Observacion = "", Terminal = itemb.CodigoPos };
+                            ListComparaupeu.Add(objCompupe);
+                            }
+                        else
+                            {
+                            var lbancopen2 = listasPendienteBancoYmayorUpeu.Where(w => w.NroOpe.Equals(itemb.NroOpe.ToUpper()) && w.Importe == itemb.Importe).ToList();
+                            if (lbancopen2.Count > 0)
+                                {
+                                //conciliado
+                                }
+                            else
+                                {
+
+                                objCompupe = new ComparabancosUpeu { FechaOpe = itemb.FechaOperacion, Descripcion = itemb.Descripcion, NroOpe = itemb.NroOpe, Importe = itemb.Importe, Dh = itemb.Dh, Pintar = 3, Observacion = "", Terminal = itemb.CodigoPos };
+                                ListComparaupeu.Add(objCompupe);
+                                }
+
+
+                            }
+                        }
+                  
+
+                    }
+                else if (resuam.Count == 0)
+                    {
+                    var duplibanco = listasPendienteUpeuYBancos.Where(w => w.NroOpe == itemb.NroOpe).ToList();
+                    if (duplibanco.Count == 2)
+                        {
+                        if (duplibanco[0].Importe == duplibanco[1].Importe)
+                            {
+                            if (duplibanco[0].Importe == itemb.Importe)
+                                {
+                                var veri = ListaUnidosUyB.Where(w => w.NroOpeB == itemb.NroOpe).ToList();
+                                if (veri.Count==0)
+                                    {
+                                    var objUnidos = new UnidosUpeuyBancos();
+                                    objUnidos.NroOpeU = itemb.NroOpe;
+                                    objUnidos.FechaRegistroU = itemb.FechaOperacion;
+                                    objUnidos.ReferenciaLibrosU = string.Empty;
+                                    objUnidos.DescripcionU = itemb.Descripcion;
+                                    objUnidos.FechaOperacionU = itemb.FechaOperacion.ToShortDateString();
+                                    objUnidos.ImporteU = itemb.Importe;
+                                    objUnidos.DhU = itemb.Dh;
+
+                                    objUnidos.NroOpeB = duplibanco[0].NroOpe;
+                                    objUnidos.FechaOperacionB = duplibanco[0].FechaOperacion;
+                                    objUnidos.ImporteB = duplibanco[0].Importe;
+                                    objUnidos.DescripcionB = duplibanco[0].Descripcion;
+                                    objUnidos.DhB = duplibanco[0].Dh;
+                                    objUnidos.Terminal = duplibanco[0].CodigoPos;
+                                    ListaUnidosUyB.Add(objUnidos);
+                                    }
+                               
+                                       
+                                }
+                            }
+                        }
+                    else if (duplibanco.Count == 1)
+                        {
+                        objCompupe = new ComparabancosUpeu { FechaOpe = itemb.FechaOperacion, Descripcion = itemb.Descripcion, NroOpe = itemb.NroOpe, Importe = itemb.Importe, Dh = itemb.Dh, Pintar = 3, Observacion = "", Terminal = itemb.CodigoPos };
+                        ListComparaupeu.Add(objCompupe);
+                        }
+         
+                    }
+                else if (resuam.Count == 1)
+                    {
+
+                  int con=  ListaUnidosUyB.Where(w => w.NroOpeB == itemb.NroOpe).ToList().Count;
+                    int pen = ListComparabcp.Where(w => w.NroOpe == itemb.NroOpe).ToList().Count;
+                    if (con==0 &&pen==0)
+                        {
+                        objCompupe = new ComparabancosUpeu { FechaOpe = itemb.FechaOperacion, Descripcion = itemb.Descripcion, NroOpe = itemb.NroOpe, Importe = itemb.Importe, Dh = itemb.Dh, Pintar = 3, Observacion = "", Terminal = itemb.CodigoPos };
+                        ListComparaupeu.Add(objCompupe);
+                        }
+                    
+                       
+                    }
+
+
+
+
+                }
+
+            /// cuando se hacep operaciones con visa
+            /// mayor visa tiene terminal se compara con Visanet(cafetin) uno a uno
+            foreach (var itemv in listaMayorVisa)
+                {
+                //virifco en la misma lista si tiene duplicados
+                if (itemv.NroOpe.Equals("725073"))
+                    {
+                    string ss = string.Empty;
+                    }
+                if (itemv.Importe == (decimal)12134.15)
+                    {
+                    string dd = string.Empty;
+                    }
+
+                var listaCafduplicado = listaMayorVisa.Where(w => w.NroOpe.Equals(itemv.NroOpe) && w.CodigoPos == itemv.CodigoPos).ToList();
+                if (listaCafduplicado.Count() == 1)
+                    {
+
+                    var listavisa = listaCafetin.Where(w => w.NroOpe.Equals(itemv.NroOpe) && w.CodigoPos == itemv.CodigoPos && w.ImporteTran == itemv.Importe).ToList();
+                    if (listavisa.Count > 0)
+                        {
+                        //VOLVER A SU LUGAR
+                        if (MesOperacion == DateTime.Parse(listavisa.First().FechaAbono).Month)
+                            {
+                            var objUnidos = new UnidosUpeuyBancos();
+                            objUnidos.NroOpeU = itemv.NroOpe;
+                            objUnidos.FechaRegistroU = itemv.FechaRegistro;
+                            objUnidos.ReferenciaLibrosU = itemv.ReferenciaLibros;
+                            objUnidos.DescripcionU = itemv.Descripcion;
+                            objUnidos.FechaOperacionU = itemv.FechaOperacion;
+                            objUnidos.ImporteU = itemv.Importe;
+                            objUnidos.DhU = itemv.Dh;
+
+                            objUnidos.NroOpeB = listavisa.First().NroOpe;
+                            objUnidos.FechaOperacionB = DateTime.Parse(listavisa.First().FechaProceso);
+                            objUnidos.ImporteB = listavisa.First().ImporteTran;
+                            objUnidos.DescripcionB = listavisa.First().NombreComercial;
+                            objUnidos.DhB = 1;
+                            objUnidos.Terminal = listavisa.First().CodigoPos;
+                            ListaUnidosUyB.Add(objUnidos);
+                            }
+                        else
+                            {
+                            //objCompupe = new ComparabancosUpeu { FechaOpe = itemv.FechaRegistro, Descripcion = itemv.ReferenciaLibros + "-" + itemv.Descripcion, NroOpe = itemv.NroOpe, Importe = itemv.Importe, Dh = itemv.Dh, Terminal = itemv.CodigoPos, Observacion = "fUERA DE FECHA" };
+                            //ListComparaupeu.Add(objCompupe);
+                            objCompbcp = new ComparabancosBcp { FechaOpe = itemv.FechaRegistro, Descripcion = itemv.ReferenciaLibros + "-" + itemv.Descripcion, NroOpe = itemv.NroOpe, Importe = itemv.Importe, Dh = itemv.Dh == 1 ? 2 : 1, Terminal = itemv.CodigoPos };
+
+                            ListComparabcp.Add(objCompbcp);
+                            }
+                        }
+                    else
+                        {
+                        //objCompupe = new ComparabancosUpeu { FechaOpe = itemv.FechaRegistro, Descripcion = itemv.ReferenciaLibros + "-" + itemv.Descripcion, NroOpe = itemv.NroOpe, Importe = itemv.Importe, Dh = itemv.Dh, Terminal = itemv.CodigoPos, Observacion = "VISA :No se ecuentra en visanet" };
+                        //ListComparaupeu.Add(objCompupe);
+                        objCompbcp = new ComparabancosBcp { FechaOpe = itemv.FechaRegistro, Descripcion = itemv.ReferenciaLibros + "-" + itemv.Descripcion, NroOpe = itemv.NroOpe, Importe = itemv.Importe, Dh = itemv.Dh == 1 ? 2 : 1, Terminal = itemv.CodigoPos };
+
+                        ListComparabcp.Add(objCompbcp);
+                        }
+
+
+                    }
+                else if (listaCafduplicado.Count() == 2)
+                    {
+
+
+                    var lbancopen = listaCafetin.Where(w => w.NroOpe.Equals(itemv.NroOpe) && w.CodigoPos == itemv.CodigoPos && w.ImporteTran == itemv.Importe).ToList();
+                    if (lbancopen.Count > 0)
+                        {
+                        //si los montos son iguales falta
+                        var objUnidos = new UnidosUpeuyBancos();
+                        objUnidos.NroOpeU = itemv.NroOpe;
+                        objUnidos.FechaRegistroU = itemv.FechaRegistro;
+                        objUnidos.ReferenciaLibrosU = itemv.ReferenciaLibros;
+                        objUnidos.DescripcionU = itemv.Descripcion;
+                        objUnidos.FechaOperacionU = itemv.FechaOperacion;
+                        objUnidos.ImporteU = itemv.Importe;
+                        objUnidos.DhU = itemv.Dh;
+
+                        objUnidos.NroOpeB = lbancopen.First().NroOpe;
+                        objUnidos.FechaOperacionB = DateTime.Parse(lbancopen.First().FechaProceso);
+                        objUnidos.ImporteB = lbancopen.First().ImporteTran;
+                        objUnidos.DescripcionB = lbancopen.First().NombreComercial;
+                        objUnidos.DhB = 1;
+                        objUnidos.Terminal = lbancopen.First().CodigoPos;
+                        ListaUnidosUyB.Add(objUnidos);
+
+                        }
+
+                    else
+                        {
+                        if (listaCafduplicado[0].Dh != listaCafduplicado[1].Dh && listaCafduplicado[0].Importe == listaCafduplicado[1].Importe)
+                            {
+                            //conciliados por extorno
+                            var objUnidos = new UnidosUpeuyBancos();
+                            objUnidos.NroOpeU = itemv.NroOpe;
+                            objUnidos.FechaRegistroU = itemv.FechaRegistro;
+                            objUnidos.ReferenciaLibrosU = itemv.ReferenciaLibros;
+                            objUnidos.DescripcionU = itemv.Descripcion;
+                            objUnidos.FechaOperacionU = itemv.FechaOperacion;
+                            objUnidos.ImporteU = itemv.Importe;
+                            objUnidos.DhU = itemv.Dh;
+
+                            objUnidos.NroOpeB = string.Empty;
+                            objUnidos.FechaOperacionB = DateTime.MaxValue;
+                            objUnidos.ImporteB = 0;
+                            objUnidos.DescripcionB = "Extorno";
+                            objUnidos.DhB = 1;
+                            objUnidos.Terminal = itemv.CodigoPos;
+                            ListaUnidosUyB.Add(objUnidos);
+
+                            }
+                        else
+                            {
+
+
+                            objCompbcp = new ComparabancosBcp { FechaOpe = itemv.FechaRegistro, Descripcion = itemv.ReferenciaLibros + "-" + itemv.Descripcion, NroOpe = itemv.NroOpe, Importe = itemv.Importe, Dh = itemv.Dh == 1 ? 2 : 1, Terminal = itemv.CodigoPos };
+
+                            ListComparabcp.Add(objCompbcp);
+                            }
+
+                        }
+
+
+                    }
+                else if (listaCafduplicado.Count() == 3)
+                    {
+                    //objCompupe = new ComparabancosUpeu { FechaOpe = itemv.FechaRegistro, Descripcion = itemv.ReferenciaLibros + "-" + itemv.Descripcion, NroOpe = itemv.NroOpe, Importe = itemv.Importe, Dh = itemv.Dh, Terminal = itemv.CodigoPos };
+                    //ListComparaupeu.Add(objCompupe);
+                    objCompbcp = new ComparabancosBcp { FechaOpe = itemv.FechaRegistro, Descripcion = itemv.ReferenciaLibros + "-" + itemv.Descripcion, NroOpe = itemv.NroOpe, Importe = itemv.Importe, Dh = itemv.Dh == 1 ? 2 : 1, Terminal = itemv.CodigoPos };
+
+                    ListComparabcp.Add(objCompbcp);
+                    }
+
+
+                }
+
+            // Visanet(Cafetin se compara con Mayor visa) en mayor tienen terminal
+            foreach (var itemv in listaCafetin)
+                {
+
+            
+                //virifco en la misma lista si tiene duplicados
+                if ( itemv.NroOpe.Equals("725073"))
+                    {
+                    string ss = string.Empty;
+                    }
+                if (MesOperacion == DateTime.Parse(itemv.FechaAbono).Month)
+                    {
+                    var listaCafduplicado = listaMayorVisa.Where(w => w.NroOpe.Equals(itemv.NroOpe) && w.CodigoPos == itemv.CodigoPos && w.Importe == itemv.ImporteTran).ToList();
+                    if (listaCafduplicado.Count() == 3)
+                        {
+
+                        objCompupe = new ComparabancosUpeu { FechaOpe = DateTime.Parse(itemv.FechaProceso), Descripcion = itemv.NombreComercial, NroOpe = itemv.NroOpe, Importe = itemv.ImporteTran, Dh = 1, Terminal = itemv.CodigoPos, Whoyo = itemv.Whoyo };
+
+                        ListPendienteExtra.Add(objCompupe);
+                        }
+                    if (listaCafduplicado.Count() == 0)
+                        {
+                        objCompupe = new ComparabancosUpeu { FechaOpe = DateTime.Parse(itemv.FechaProceso), Descripcion = itemv.NombreComercial, NroOpe = itemv.NroOpe, Importe = itemv.ImporteTran, Dh = 1, Terminal = itemv.CodigoPos, Observacion = "VISA : No se encuentra en el mayor upeu", Whoyo = itemv.Whoyo };
+
+                        ListPendienteExtra.Add(objCompupe);
+
+                        }
+                    }
+                else
+                    {
+                    objCompupe = new ComparabancosUpeu { FechaOpe = DateTime.Parse(itemv.FechaProceso), Descripcion = itemv.NombreComercial, NroOpe = itemv.NroOpe, Importe = itemv.ImporteTran, Dh = 1, Terminal = itemv.CodigoPos, Observacion = "VISA : No se encuentra en el mayor upeu", Whoyo = itemv.Whoyo };
+
+                    ListPendienteExtra.Add(objCompupe);
+                    }
+
+                }
+            /// en visanet se agrupa por fecha de abono y terminal y se suman los montos
+            /// y esos montos se le encontrara en el banco  (nro ope = VISANET)
+            DateTime fechaaux = new DateTime();
+            foreach (var itemv in listaCafetinGroup)
+                {
+                //objCompupe = new ComparabancosUpeu { FechaOpe = DateTime.Parse( itemv.FechaAbono), Descripcion = "VISA AGRUPADOS-Diferencia", NroOpe = "", Importe = itemv.Diferencia, Dh = 1, Terminal = itemv.CodigoPos, Observacion = "Diferencia" };
+                //ListPendienteExtra.Add(objCompupe);
+                if (NombreBanco.StartsWith("Scoti"))
+                    {
+                    fechaaux = DateTime.Parse(itemv.FechaAbono);
+                    }
+                else if (NombreBanco.StartsWith("BCP"))
+                    {
+                    if (itemv.Whoyo.Equals("VN"))
+                        {
+                        fechaaux = DateTime.Parse(itemv.FechaAbono).AddDays(-1);
+                        }
+                    else
+                        {
+                        fechaaux = DateTime.Parse(itemv.FechaAbono);
+                        }
+
+                    }
+                else
+                    {
+                    fechaaux = DateTime.Parse(itemv.FechaAbono).AddDays(-1);
+                    }
+                if (itemv.NetoAbonar == (decimal)471.35)
+                    {
+                    string dd = string.Empty;
+                    }
+
+                if (MesOperacion == DateTime.Parse(itemv.FechaAbono).Month)
+                    {
+                    
+                    var listaCafduplicadov = listaBancoVisa.Where(w => w.FechaOperacion == fechaaux && w.Importe == itemv.NetoAbonar).ToList();
+                    if (listaCafduplicadov.Count() == 1)
+                        {
+
+
+                        var objUnidos = new UnidosUpeuyBancos();
+                        objUnidos.NroOpeU = string.Empty;
+                        objUnidos.FechaRegistroU = DateTime.Parse(itemv.FechaAbono);
+                        objUnidos.ReferenciaLibrosU = String.Empty;
+                        objUnidos.DescripcionU = "VISANET AGRUPADOS";
+                        objUnidos.FechaOperacionU = string.Empty;
+                        objUnidos.ImporteU = itemv.NetoAbonar;
+                        objUnidos.DhU = 1;
+
+                        objUnidos.NroOpeB = listaCafduplicadov.First().NroOpe;
+                        objUnidos.FechaOperacionB = listaCafduplicadov.First().FechaOperacion;
+                        objUnidos.ImporteB = listaCafduplicadov.First().Importe;
+                        objUnidos.DescripcionB = listaCafduplicadov.First().Descripcion;
+                        objUnidos.DhB = 1;
+                        objUnidos.Terminal = itemv.CodigoPos;
+                        ListaUnidosUyB.Add(objUnidos);
+                        if (NombreBanco.StartsWith("Scoti") || NombreBanco.StartsWith("BCP"))
+                            {
+
+                           
+                            objCompupe = new ComparabancosUpeu { FechaOpe = DateTime.Parse(itemv.FechaAbono), Descripcion =itemv.Whoyo, NroOpe = "", Importe = itemv.Diferencia, Dh = 2, Terminal = itemv.CodigoPos };
+                          
+                            listAcuComiokv.Add(objCompupe);
+
+
+                            // ListComparabcp
+                            }
+
+
+                        }
+                    else if (listaCafduplicadov.Count() == 2)
+                        {
+
+
+                        objCompupe = new ComparabancosUpeu { FechaOpe = DateTime.Parse(itemv.FechaAbono), Descripcion = itemv.NombreComercial, NroOpe = "DUPLICADOS-CORREGIR", Importe = itemv.NetoAbonar, Dh = 1, Terminal = itemv.CodigoPos };
+                        ListComparaupeu.Add(objCompupe);
+
+
+                        }
+                    else if (listaCafduplicadov.Count() == 0)
+                        {
+                        if (itemv.NetoAbonar > 0)
+                            {
+                                                     
+                            objCompupe = new ComparabancosUpeu { FechaOpe = DateTime.Parse(itemv.FechaAbono), Descripcion = "VISA AGRUPADOS-" + itemv.Whoyo, NroOpe = "", Importe = itemv.NetoAbonar, Dh = 2, Terminal = itemv.CodigoPos, Observacion = "No se encuentra en Banco" };
+
+                            ListPendienteExtra.Add(objCompupe);
+
+                            objCompupe = new ComparabancosUpeu { FechaOpe = DateTime.Parse(itemv.FechaAbono), Descripcion = "Comision-"+itemv.Whoyo, NroOpe = "", Importe = itemv.Diferencia, Dh = 2, Terminal = itemv.CodigoPos, Observacion = "Diferencia" };
+                            ListPendienteExtra.Add(objCompupe);
+                            }
+
+
+                        }
+
+
+                    }
+                else
+                    {
+               
+                    var listaCafduplicadov = listaBancoVisa.Where(w => w.FechaOperacion == fechaaux && w.Importe == itemv.NetoAbonar).ToList();
+                    if (listaCafduplicadov.Count() == 1)
+                        {
+
+
+                        var objUnidos = new UnidosUpeuyBancos();
+                        objUnidos.NroOpeU = string.Empty;
+                        objUnidos.FechaRegistroU = DateTime.Parse(itemv.FechaAbono);
+                        objUnidos.ReferenciaLibrosU = String.Empty;
+                        objUnidos.DescripcionU = "VISANET AGRUPADOS";
+                        objUnidos.FechaOperacionU = string.Empty;
+                        objUnidos.ImporteU = itemv.NetoAbonar;
+                        objUnidos.DhU = 1;
+
+                        objUnidos.NroOpeB = listaCafduplicadov.First().NroOpe;
+                        objUnidos.FechaOperacionB = listaCafduplicadov.First().FechaOperacion;
+                        objUnidos.ImporteB = listaCafduplicadov.First().Importe;
+                        objUnidos.DescripcionB = listaCafduplicadov.First().Descripcion;
+                        objUnidos.DhB = 1;
+                        objUnidos.Terminal = itemv.CodigoPos;
+                        ListaUnidosUyB.Add(objUnidos);
+                        if (NombreBanco.StartsWith("Scoti") || NombreBanco.StartsWith("BCP"))
+                            {
+
+                            objCompupe = new ComparabancosUpeu { FechaOpe = DateTime.Parse(itemv.FechaAbono), Descripcion = itemv.Whoyo, NroOpe = "", Importe = itemv.Diferencia, Dh = 2, Terminal = itemv.CodigoPos };
+
+                            listAcuComiokv.Add(objCompupe);
+                            // ListComparabcp
+                            }
+
+
+                        }
+                    else
+                        {
+                        //PEID PONER COMO EL  OTRO
+                        objCompupe = new ComparabancosUpeu { FechaOpe = DateTime.Parse(itemv.FechaAbono), Descripcion = "VISA AGRUPADOS", NroOpe = "", Importe = itemv.NetoAbonar, Dh = 1, Terminal = itemv.CodigoPos, Observacion = "Fuera fecha" };
+                        ListPendienteExtra.Add(objCompupe);
+
+                        objCompupe = new ComparabancosUpeu { FechaOpe = DateTime.Parse(itemv.FechaAbono), Descripcion = "Comision-" + itemv.Whoyo, NroOpe = "", Importe = itemv.Diferencia, Dh = 1, Terminal = itemv.CodigoPos, Observacion = "Fuera fecha" };
+                        ListPendienteExtra.Add(objCompupe);
+                        }
+                    }
+             
+
+                }
+
+            var agrupacomi =
+       from s in listAcuComiokv
+       group s by s.Descripcion into newGroup
+       orderby newGroup.Key
+       select new { Descripcion = newGroup.Key, Fecha = newGroup.First().FechaOpe, Diferencia = newGroup.Sum(w => w.Importe) };
+            // Todas las diferencias los pongo en pendiente
+            foreach (var item in agrupacomi.ToList())
+                {
+                objCompupe = new ComparabancosUpeu { FechaOpe = item.Fecha, Descripcion = "Comision-" + item.Descripcion, NroOpe = "ComVISA", Importe = item.Diferencia, Dh = 2, Terminal = string.Empty };
+                ListComparaupeu.Add(objCompupe);
+                }
+
+            /// visa en los bancos se compara con visanet
+            string fechaaux1 = string.Empty;
+                //los quet tienen VISANET en bancos
+            foreach (var itemv in listaBancoVisa)
+                {
+                string who = string.Empty;
+                if (itemv.Descripcion.Contains("PROCESOS DE"))
+                    {
+                    who = "MC";
+                    }
+                else if (itemv.Descripcion.Contains("CIA DE SERV"))
+                    {
+                    who = "AX";
+                    }
+                else
+                    {
+                    who = "VN";
+                    }
+
+                if (NombreBanco.StartsWith("Scoti"))
+                    {
+                    fechaaux1 = itemv.FechaOperacion.ToShortDateString();
+                    }
+                else if (NombreBanco.StartsWith("BCP"))
+                    {
+                    if (who == "VN")
+                        {
+                        fechaaux1 = itemv.FechaOperacion.AddDays(1).ToString("dd/MM/yyyy");
+                        }
+                    else
+                        {
+                        fechaaux1 = itemv.FechaOperacion.ToString("dd/MM/yyyy");
+                        }
+                    
+                    }
+                else
+                    {
+                    fechaaux1 = itemv.FechaOperacion.AddDays(1).ToShortDateString();
+                    }
+                // NO PUEDO COMPARAR CUANDO FECHA ES STIRNG
+               
+
+                if (itemv.Descripcion.Contains("PROCESOS DE") || itemv.Descripcion.Contains("CIA DE SERV") || itemv.Descripcion.Contains("CREDIBANK VISANET"))
+                    {
+                    var listaCafduplicadov = listaCafetinGroup.Where(w => w.FechaAbono == fechaaux1 && w.NetoAbonar == itemv.Importe).ToList();
+                    if (listaCafduplicadov.Count == 1)
+                        {
+                        var objUnidos = new UnidosUpeuyBancos();
+                        objUnidos.NroOpeU = itemv.NroOpe;
+                        objUnidos.FechaRegistroU = itemv.FechaOperacion;
+                        objUnidos.ReferenciaLibrosU = String.Empty;
+                        objUnidos.DescripcionU = "Concilia Agrupados con banco "+ listaCafduplicadov.First().Whoyo;
+                        objUnidos.FechaOperacionU = string.Empty;
+                        objUnidos.ImporteU = itemv.Importe;
+                        objUnidos.DhU = itemv.Dh;
+
+                        objUnidos.NroOpeB = listaCafduplicadov.First().NroOpe;
+                        objUnidos.FechaOperacionB = DateTime.Parse(listaCafduplicadov.First().FechaAbono);
+                        objUnidos.ImporteB = listaCafduplicadov.First().NetoAbonar;
+                        objUnidos.DescripcionB = listaCafduplicadov.First().Whoyo;
+                        objUnidos.DhB = itemv.Dh;
+                        objUnidos.Terminal = itemv.CodigoPos;
+                        ListaUnidosUyB.Add(objUnidos);
+
+                        }
+                    else
+                        {
+                        objCompupe = new ComparabancosUpeu { FechaOpe = itemv.FechaOperacion, Descripcion = itemv.Descripcion + "-" + who, NroOpe = itemv.NroOpe, Importe = itemv.Importe, Dh = itemv.Dh, Terminal = itemv.CodigoPos, Observacion = "VISANET No encuentra en agrupados" };
+
+                        ListComparaupeu.Add(objCompupe);
+                        }
+
+                    }
+
+          
+                }
+
+            }
+        private void CargaExcel()
+            {
+            //falta cantidades
+           
+            dtc = ExcelUtil.GetNameSheets(diag.FileName);
+           
+            }
+        private void DivujaExcel()
+            {
+            using (ExcelPackage excelPackage = new ExcelPackage())
+                {
+                //Set some properties of the Excel document
+                excelPackage.Workbook.Properties.Author = "Daniel Antazu - Movil 992144164";
+                excelPackage.Workbook.Properties.Title = "Conciliacion";
+                excelPackage.Workbook.Properties.Subject = "Se leen 4 hojas de excel visa, pendientes, mayor upeu,mayor banco en ese orden si no hay datos de uno de elllos dejarlo la hoja en blanco en ese orden";
+                excelPackage.Workbook.Properties.Created = DateTime.Now;
+                excelPackage.Workbook.CalcMode = ExcelCalcMode.Manual;
+
+                //Create the WorkSheet
+                ExcelWorksheet worksheet = excelPackage.Workbook.Worksheets.Add("Pendientes -" + CuentaContableUpeu);
+                ExcelWorksheet worksheetCon = excelPackage.Workbook.Worksheets.Add("Conciliados -" + CuentaContableUpeu);
+                ExcelWorksheet worksheetPenExtra = excelPackage.Workbook.Worksheets.Add("Extras -" + CuentaContableUpeu);
+
+                #region Pendientes
+                #region cabeceras
+                worksheet.Cells["A1:A1"].Value = "No ignore los pendiente Solucionalo!";
+
+
+                worksheet.Cells["D1:G1"].Value = "Valores no Contables";
+                worksheet.Cells["D2:E2"].Value = "UPEU";
+                worksheet.Cells["F2:G2"].Value = "BANCO";
+
+                worksheet.Cells[3, 1].Value = "Fecha";
+
+                worksheet.Cells[3, 2].Value = "Doc";
+                worksheet.Cells[3, 3].Value = "Historico";
+
+                worksheet.Cells[3, 4].Value = "Debito";
+                worksheet.Cells[3, 5].Value = "Credito";
+                worksheet.Cells[3, 6].Value = "Debito";
+                worksheet.Cells[3, 7].Value = "Credito";
+
+                worksheet.Cells[3, 8].Value = "Terminal";
+                worksheet.Cells[3, 9].Value = "Anotaciones";
+
+                #endregion cabeceras
+                #region estiloColumnas
+                worksheet.Column(1).Width = 15;
+                worksheet.Column(2).Width = 12;
+                worksheet.Column(3).Width = 50;
+                worksheet.Column(4).Width = 13;
+                worksheet.Column(5).Width = 13;
+                worksheet.Column(6).Width = 13;
+                worksheet.Column(7).Width = 13;
+                worksheet.Column(8).Width = 13;
+
+
+                worksheet.Column(1).Style.Numberformat.Format = "dd/MM/yyyy";
+                worksheet.Column(4).Style.Numberformat.Format = "#,##0.00";
+                worksheet.Column(5).Style.Numberformat.Format = "#,##0.00";
+                worksheet.Column(6).Style.Numberformat.Format = "#,##0.00";
+                worksheet.Column(7).Style.Numberformat.Format = "#,##0.00";
+                #endregion
+
+                #region estilosCeldas
+
+                using (ExcelRange rng = worksheet.Cells["A1:C1"])
+                    {
+                    rng.Merge = true;
+                    rng.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                    rng.Style.Font.Bold = true;
+                    rng.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+
+                    // rng.Style.Border.Bottom.Style = ExcelBorderStyle.Thick;
+                    rng.Style.Border.Top.Style = ExcelBorderStyle.Thick;
+                    rng.Style.Border.Left.Style = ExcelBorderStyle.Thick;
+                    rng.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                    }
+
+                using (ExcelRange rng = worksheet.Cells["D1:G1"])
+                    {
+                    rng.Merge = true;
+                    rng.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                    rng.Style.Font.Bold = true;
+                    rng.Style.Border.Top.Style = ExcelBorderStyle.Thick;
+                    rng.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+                    rng.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    rng.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Right.Style = ExcelBorderStyle.Thick;
+                    }
+                using (ExcelRange rng = worksheet.Cells["A2:C2"])
+                    {
+                    rng.Merge = true;
+                    rng.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                    rng.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Left.Style = ExcelBorderStyle.Thick;
+                    rng.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Font.Bold = true;
+                    rng.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    }
+
+                using (ExcelRange rng = worksheet.Cells["D2:E2"])
+                    {
+                    rng.Merge = true;
+                    rng.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                    rng.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Font.Bold = true;
+                    rng.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    }
+                using (ExcelRange rng = worksheet.Cells["F2:G2"])
+                    {
+                    rng.Merge = true;
+                    rng.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                    rng.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Right.Style = ExcelBorderStyle.Thick;
+                    rng.Style.Font.Bold = true;
+                    rng.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    }
+                using (ExcelRange rng = worksheet.Cells["A3:G3"])
+                    {
+
+                    rng.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                    rng.Style.Border.Bottom.Style = ExcelBorderStyle.Thick;
+                    rng.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+                    //rng.Style.Border.Right.Style = ExcelBorderStyle.Thick;
+                    rng.Style.Font.Bold = true;
+                    rng.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    }
+
+                using (ExcelRange rng = worksheet.Cells["A3:A3"])
+                    {
+
+                    rng.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+
+                    rng.Style.Border.Left.Style = ExcelBorderStyle.Thick;
+                    rng.Style.Font.Bold = true;
+                    rng.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    }
+                using (ExcelRange rng = worksheet.Cells["G1:G3"])
+                    {
+
+                    rng.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+
+                    rng.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Font.Bold = true;
+                    rng.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    }
+                using (ExcelRange rng = worksheet.Cells["H1:H3"])
+                    {
+
+                    rng.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+
+                    rng.Style.Border.Right.Style = ExcelBorderStyle.Thick;
+                    rng.Style.Border.Bottom.Style = ExcelBorderStyle.Thick;
+                    rng.Style.Font.Bold = true;
+                    rng.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    }
+                #endregion
+                // Add the second row of header data
+                int rowNumber = 5;
+
+                worksheet.Cells[4, 1].Value = string.Empty;
+                worksheet.Cells[4, 2].Value = string.Empty;
+                worksheet.Cells[4, 3].Value = "Saldo al " + GetLastDayOf(ListComparabcp.First().FechaOpe);
+                worksheet.Cells[4, 4].Value = SaldoFiNUpeu;
+                worksheet.Cells[4, 7].Value = SaldoFiNBanco;
+
+
+                foreach (var company in ListComparabcp.OrderBy(w => w.NroOpe).ToList())
+                    {
+                    worksheet.Cells[rowNumber, 1].Value = company.FechaOpe;
+                    worksheet.Cells[rowNumber, 2].Value = company.NroOpe;
+                    worksheet.Cells[rowNumber, 3].Value = company.Descripcion;
+                    worksheet.Cells[rowNumber, 8].Value = company.Terminal;
+                    worksheet.Cells[rowNumber, 9].Value = company.Observacion;
+                    if (company.Dh == 1)
+                        {
+                        worksheet.Cells[rowNumber, 6].Value = company.Importe;
+                      
+                        }
+                    else
+                        {
+                        worksheet.Cells[rowNumber, 7].Value = company.Importe;
+
+                        }
+
+                    //Ok now format the company row
+                    using (var range = worksheet.Cells[rowNumber, 1, rowNumber, 8])
+                        {
+                        range.Style.Font.Bold = false;
+                        range.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                        range.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+                        range.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                        range.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+                        range.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+                        range.Style.Font.Color.SetColor(Color.Black);
+                        range.Style.ShrinkToFit = true;
+                        }
+
+                    rowNumber++;
+
+
+                    }
+                foreach (var companyU in ListComparaupeu.OrderBy(w => w.NroOpe).ToList())
+                    {
+                    worksheet.Cells[rowNumber, 1].Value = companyU.FechaOpe;
+                    worksheet.Cells[rowNumber, 2].Value = companyU.NroOpe;
+                    worksheet.Cells[rowNumber, 3].Value = companyU.Descripcion;
+                    worksheet.Cells[rowNumber, 3].AutoFitColumns(50, 250);
+                    worksheet.Cells[rowNumber, 8].Value = companyU.Terminal;
+                    worksheet.Cells[rowNumber, 9].Value = companyU.Observacion;
+                    //  worksheet.Cells[rowNumber, 3].AutoFitColumns();
+                    using (var range = worksheet.Cells[rowNumber, 3, rowNumber, 3])
+                        {
+                        range.Style.Font.Bold = true;
+
+                        // range.Style.Font.Color.SetColor(Color.Red);
+                        range.Style.ShrinkToFit = true;
+                        }
+
+                    if (companyU.Dh == 1)
+                        {
+                        //worksheet.Cells[rowNumber, 6].Value = companyU.Importe;
+                        worksheet.Cells[rowNumber, 4].Value = companyU.Importe;
+                        }
+                    else
+                        {
+                        //worksheet.Cells[rowNumber, 7].Value = companyU.Importe;
+                        worksheet.Cells[rowNumber, 5].Value = companyU.Importe;
+                        }
+                    if (companyU.Pintar == 1)
+                        {
+                        using (var range = worksheet.Cells[rowNumber, 1, rowNumber, 7])
+                            {
+                            range.Style.Font.Bold = true;
+
+                            range.Style.Font.Color.SetColor(Color.Red);
+                            // range.Style.ShrinkToFit = false;
+                            }
+                        }
+                    if (companyU.Pintar == 2)
+                        { // hay dos registros que no estan en bancos
+                        using (var range = worksheet.Cells[rowNumber, 1, rowNumber, 7])
+                            {
+                            range.Style.Font.Bold = true;
+
+                            range.Style.Font.Color.SetColor(Color.OrangeRed);
+                            //range.Style.ShrinkToFit = false;
+                            }
+                        }
+                    if (companyU.Pintar == 3)
+                        {//hay tres registros
+                        using (var range = worksheet.Cells[rowNumber, 1, rowNumber, 7])
+                            {
+                            range.Style.Font.Bold = true;
+
+                            range.Style.Font.Color.SetColor(Color.Green);
+                            // range.Style.ShrinkToFit = false;
+                            }
+                        }
+                    if (companyU.Pintar == 4)
+                        {// duplicados
+                        using (var range = worksheet.Cells[rowNumber, 1, rowNumber, 7])
+                            {
+                            range.Style.Font.Bold = true;
+
+                            range.Style.Font.Color.SetColor(Color.Firebrick);
+                            // range.Style.ShrinkToFit = false;
+                            }
+                        }
+                    if (companyU.Whoyo == "MC")
+                        {//hay tres registros
+                        using (var range = worksheet.Cells[rowNumber, 1, rowNumber, 7])
+                            {
+                            range.Style.Font.Bold = true;
+                            range.Style.Font.Color.SetColor(Color.Coral);
+                            }
+                        }
+                     if (companyU.Whoyo == "VN")
+                        {
+                        using (var range = worksheet.Cells[rowNumber, 1, rowNumber, 7])
+                            {
+                            range.Style.Font.Bold = true;
+                            range.Style.Font.Color.SetColor(Color.DarkViolet);
+                            }
+                        }
+                    using (var range = worksheet.Cells[rowNumber, 1, rowNumber, 9])
+                        {
+                        range.Style.Font.Bold = false;
+                        range.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                        range.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+                        range.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                        range.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+                        range.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+                        //range.Style.Font.Color.SetColor(Color.Black);
+                        //range.Style.ShrinkToFit = false;
+                        }
+                    rowNumber++;
+                    }
+
+                #region formatoTotales
+                int varaxusum = rowNumber - 1;
+                int varaxusum1 = rowNumber + 1;
+                int varaxusum2 = rowNumber + 2;
+                string celsuD = "D" + rowNumber;
+                string celsuE = "E" + rowNumber;
+
+                string celsuF = "F" + rowNumber;
+                string celsuG = "G" + rowNumber;
+
+                string celsuD1 = "D" + varaxusum1;
+                string celsuE1 = "E" + varaxusum1;
+
+                string celsuF1 = "F" + varaxusum1;
+                string celsuG1 = "G" + varaxusum1;
+
+                string celsuD2 = "D" + varaxusum2;
+                string celsuE2 = "E" + varaxusum2;
+
+                string celsuF2 = "F" + varaxusum2;
+                string celsuG2 = "G" + varaxusum2;
+
+
+                worksheet.Cells[celsuD].Formula = "SUM(D4:D" + varaxusum + ")";
+                worksheet.Cells[celsuD].Style.Numberformat.Format = "#,##0.00";
+
+                worksheet.Cells[celsuE].Formula = "SUM(E4:E" + varaxusum + ")";
+                worksheet.Cells[celsuE].Style.Numberformat.Format = "#,##0.00";
+
+                worksheet.Cells[celsuF].Formula = "SUM(F4:F" + varaxusum + ")";
+                worksheet.Cells[celsuF].Style.Numberformat.Format = "#,##0.00";
+
+                worksheet.Cells[celsuG].Formula = "SUM(G4:G" + varaxusum + ")";
+                worksheet.Cells[celsuG].Style.Numberformat.Format = "#,##0.00";
+
+
+                string CellUpecomprueba = "D" + (rowNumber + 1); //D139
+                string CellBancocomprueba = "E" + (rowNumber + 1);//E139
+
+                string CellUpecomprueba1 = "F" + (rowNumber + 1); //D139
+                string CellBancocomprueba1 = "G" + (rowNumber + 1);//E139
+                //worksheet.Cells[CellUpecomprueba].Formula = "IF(SUM(D4:D" + varaxusum + ")-SUM(E4:E" + varaxusum + ")<0;SUM(D4:D" + varaxusum + ")- SUM(E4:E" + varaxusum + ");0)";
+                worksheet.Cells[celsuD].Calculate();
+                worksheet.Cells[celsuE].Calculate();
+                worksheet.Cells[celsuF].Calculate();
+                worksheet.Cells[celsuG].Calculate();
+                decimal d1 = decimal.Parse(worksheet.Cells[rowNumber, 4].Value.ToString());
+                decimal h1 = decimal.Parse(worksheet.Cells[rowNumber, 5].Value.ToString());
+                decimal d2 = decimal.Parse(worksheet.Cells[rowNumber, 6].Value.ToString());
+                decimal h2 = decimal.Parse(worksheet.Cells[rowNumber, 7].Value.ToString());
+
+                decimal sumadh1 = d1 - h1;
+                if (sumadh1 < 0)
+                    {
+                    worksheet.Cells[CellUpecomprueba].Value = (-1) * sumadh1;
+                    worksheet.Cells[CellBancocomprueba].Value = 0;
+                    }
+                else
+                    {
+                    worksheet.Cells[CellBancocomprueba].Value = sumadh1;
+                    worksheet.Cells[CellUpecomprueba].Value = 0;
+                    }
+                decimal sumadh2 = d2 - h2;
+                if (sumadh2 < 0)
+                    {
+                    worksheet.Cells[CellUpecomprueba1].Value = (-1) * sumadh2;
+                    worksheet.Cells[CellBancocomprueba1].Value = 0;
+                    }
+                else
+                    {
+                    worksheet.Cells[CellBancocomprueba1].Value = sumadh2;
+                    worksheet.Cells[CellUpecomprueba1].Value = 0;
+                    }
+
+
+                worksheet.Cells[celsuD2].Formula = "SUM(D" + rowNumber + ":" + celsuD1 + ")";
+                worksheet.Cells[celsuE2].Formula = "SUM(E" + rowNumber + ":" + celsuE1 + ")";
+
+                worksheet.Cells[celsuF2].Formula = "SUM(F" + rowNumber + ":" + celsuF1 + ")";
+                worksheet.Cells[celsuG2].Formula = "SUM(G" + rowNumber + ":" + celsuG1 + ")";
+
+
+                #endregion
+                #endregion
+
+
+                #region Conciliados
+
+                #region cabeceras
+                worksheetCon.Cells["B2:B2"].Value = "Fecha";
+                worksheetCon.Cells["C2:C2"].Value = "Com";
+                worksheetCon.Cells["D2:D2"].Value = "Descripcion";
+
+                worksheetCon.Cells["E2:E2"].Value = "Nro Ope";
+
+                worksheetCon.Cells["F2:F2"].Value = "FechaOpe";
+                worksheetCon.Cells["G2:G2"].Value = "Debito";
+                worksheetCon.Cells["H2:H2"].Value = "Credito";
+
+                worksheetCon.Cells["K2:K2"].Value = "Fecha";
+                worksheetCon.Cells["L2:L2"].Value = "Nro Ope";
+                worksheetCon.Cells["M2:M2"].Value = "Referencia";
+                worksheetCon.Cells["N2:N2"].Value = "Monto D";
+                worksheetCon.Cells["O2:O2"].Value = "Monto H";
+                worksheetCon.Cells["P2:P2"].Value = "Terminal";
+                worksheetCon.Column(2).Width = 12;
+                worksheetCon.Column(3).Width = 12;
+                worksheetCon.Column(4).Width = 30;
+                worksheetCon.Column(5).Width = 12;
+                worksheetCon.Column(6).Width = 12;
+                worksheetCon.Column(7).Width = 12;
+                worksheetCon.Column(8).Width = 12;
+                worksheetCon.Column(11).Width = 12;
+                worksheetCon.Column(12).Width = 12;
+                worksheetCon.Column(13).Width = 30;
+                worksheetCon.Column(14).Width = 12;
+                worksheetCon.Column(15).Width = 12;
+
+                worksheetCon.Column(2).Style.Numberformat.Format = "dd/MM/yyyy";
+                worksheetCon.Column(5).Style.Numberformat.Format = "dd/MM/yyyy";
+                worksheetCon.Column(7).Style.Numberformat.Format = "#,##0.00";
+                worksheetCon.Column(8).Style.Numberformat.Format = "#,##0.00";
+
+                worksheetCon.Column(11).Style.Numberformat.Format = "dd/MM/yyyy";
+                worksheetCon.Column(14).Style.Numberformat.Format = "#,##0.00";
+
+
+                using (ExcelRange rng = worksheetCon.Cells["B2:H2"])
+                    {
+                    rng.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                    rng.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Font.Bold = true;
+                    rng.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    }
+                using (ExcelRange rng = worksheetCon.Cells["K2:O2"])
+                    {
+                    rng.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                    rng.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Font.Bold = true;
+                    rng.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    }
+                #endregion cabece
+
+                int rowNumber1 = 3;
+                foreach (var company in ListaUnidosUyB)
+                    {
+                    worksheetCon.Cells[rowNumber1, 2].Value = company.FechaRegistroU;
+                    worksheetCon.Cells[rowNumber1, 3].Value = company.ReferenciaLibrosU;
+                    worksheetCon.Cells[rowNumber1, 4].Value = company.DescripcionU;
+                    worksheetCon.Cells[rowNumber1, 5].Value = company.NroOpeU;
+                    worksheetCon.Cells[rowNumber1, 6].Value = company.FechaOperacionU;
+                    if (company.DhU == 1)
+                        {
+                        worksheetCon.Cells[rowNumber1, 7].Value = company.ImporteU;
+                        }
+                    else
+                        {
+                        worksheetCon.Cells[rowNumber1, 8].Value = company.ImporteU;
+                        }
+
+                    worksheetCon.Cells[rowNumber1, 11].Value = company.FechaOperacionB;
+                    worksheetCon.Cells[rowNumber1, 12].Value = company.NroOpeB;
+                    worksheetCon.Cells[rowNumber1, 13].Value = company.DescripcionB;
+
+                    if (company.DhB == 1)
+                        {
+                        worksheetCon.Cells[rowNumber1, 14].Value = company.ImporteB;
+                        }
+                    else
+                        {
+                        worksheetCon.Cells[rowNumber1, 15].Value = company.ImporteB;
+                        }
+                    worksheetCon.Cells[rowNumber1, 16].Value = company.Terminal;
+                    rowNumber1++;
+
+                    using (var range = worksheetCon.Cells[rowNumber1, 3, rowNumber1, 16])
+                        {
+                        range.Style.Font.Bold = false;
+                        range.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                        range.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+                        range.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                        range.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+                        range.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+                        range.Style.Font.Color.SetColor(Color.Black);
+                        range.Style.ShrinkToFit = true;
+                        }
+
+
+                    }
+
+
+
+
+                #endregion dosiguales
+                #region Extras
+
+                #region cabeceras
+                worksheetPenExtra.Cells["B2:B2"].Value = "Fecha";
+                worksheetPenExtra.Cells["C2:C2"].Value = "Nro Ope";
+                worksheetPenExtra.Cells["D2:D2"].Value = "Descripcion";
+
+                worksheetPenExtra.Cells["E2:E2"].Value = "Importe";
+
+                worksheetPenExtra.Cells["F2:F2"].Value = "Terminal";
+
+                worksheetPenExtra.Column(2).Width = 12;
+                worksheetPenExtra.Column(3).Width = 12;
+                worksheetPenExtra.Column(4).Width = 30;
+                worksheetPenExtra.Column(5).Width = 12;
+                worksheetPenExtra.Column(6).Width = 12;
+
+
+
+                worksheetPenExtra.Column(2).Style.Numberformat.Format = "dd/MM/yyyy";
+
+                worksheetPenExtra.Column(5).Style.Numberformat.Format = "#,##0.00";
+
+
+                using (ExcelRange rng = worksheetPenExtra.Cells["B2:F2"])
+                    {
+                    rng.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                    rng.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Font.Bold = true;
+                    rng.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    }
+
+                #endregion cabece
+
+                int rowNumber2 = 3;
+                foreach (var company in ListPendienteExtra.OrderBy(w=>w.Descripcion))
+                    {
+                    worksheetPenExtra.Cells[rowNumber2, 2].Value = company.FechaOpe;
+                    worksheetPenExtra.Cells[rowNumber2, 3].Value = company.NroOpe;
+                    worksheetPenExtra.Cells[rowNumber2, 4].Value = company.Descripcion;
+                    worksheetPenExtra.Cells[rowNumber2, 5].Value = company.Importe;
+                    worksheetPenExtra.Cells[rowNumber2, 6].Value = company.Terminal;
+
+
+                    rowNumber2++;
+
+                    using (var range = worksheetPenExtra.Cells[rowNumber2, 3, rowNumber2, 6])
+                        {
+                        range.Style.Font.Bold = false;
+                        range.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                        range.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+                        range.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                        range.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+                        range.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+                        range.Style.Font.Color.SetColor(Color.Black);
+                        range.Style.ShrinkToFit = true;
+                        }
+
+                    if (company.Whoyo == "MC")
+                        {//hay tres registros
+                        using (var range = worksheetPenExtra.Cells[rowNumber2, 3, rowNumber2, 6])
+                            {
+                            range.Style.Font.Bold = true;
+                            range.Style.Font.Color.SetColor(Color.Coral);
+                            }
+                        }
+                    if (company.Whoyo == "VN")
+                        {
+                        using (var range = worksheetPenExtra.Cells[rowNumber2, 3, rowNumber2, 6])
+                            {
+                            range.Style.Font.Bold = true;
+                            range.Style.Font.Color.SetColor(Color.DarkViolet);
+                            }
+                        }
+                    }
+
+
+
+
+                #endregion 
+                FileInfo fi = new FileInfo(@"C:\Excel\Conciliacion.xlsx");
+                excelPackage.Workbook.Calculate();
+                excelPackage.SaveAs(fi);
+                excelPackage.Dispose();
+
+
+
+
+                }
+            this.Timer1.Stop();
+            this.progressBar1.Visible = false;
+            MessageBox.Show("Proceso concluido ", "Informacion");
+
+            }
+        private void DivujaExcelOnly()
+            {
+            using (ExcelPackage excelPackage = new ExcelPackage())
+                {
+                //Set some properties of the Excel document
+                excelPackage.Workbook.Properties.Author = "Daniel Antazu - Movil 992144164";
+                excelPackage.Workbook.Properties.Title = "Conciliacion";
+                excelPackage.Workbook.Properties.Subject = "Se leen 4 hojas de excel visa, pendientes, mayor upeu,mayor banco en ese orden si no hay datos de uno de elllos dejarlo la hoja en blanco en ese orden";
+                excelPackage.Workbook.Properties.Created = DateTime.Now;
+                excelPackage.Workbook.CalcMode = ExcelCalcMode.Manual;
+
+                //Create the WorkSheet
+              
+                ExcelWorksheet worksheetPenExtra = excelPackage.Workbook.Worksheets.Add("Extras -" + CuentaContableUpeu);
+
+                #region Extras
+
+                #region cabeceras
+                worksheetPenExtra.Cells["B2:B2"].Value = "Fecha";
+                worksheetPenExtra.Cells["C2:C2"].Value = "Nro Ope";
+                worksheetPenExtra.Cells["D2:D2"].Value = "Descripcion";
+
+                worksheetPenExtra.Cells["E2:E2"].Value = "Importe-tran";
+
+                worksheetPenExtra.Cells["F2:F2"].Value = "Importe-Abono";
+                worksheetPenExtra.Cells["G2:G2"].Value = "Comision";
+                worksheetPenExtra.Cells["H2:H2"].Value = "Terminal";
+
+                worksheetPenExtra.Column(2).Width = 12;
+                worksheetPenExtra.Column(3).Width = 12;
+                worksheetPenExtra.Column(4).Width = 30;
+                worksheetPenExtra.Column(5).Width = 12;
+                worksheetPenExtra.Column(6).Width = 12;
+
+
+
+                worksheetPenExtra.Column(2).Style.Numberformat.Format = "dd/MM/yyyy";
+
+                worksheetPenExtra.Column(5).Style.Numberformat.Format = "#,##0.00";
+
+
+                using (ExcelRange rng = worksheetPenExtra.Cells["B2:G2"])
+                    {
+                    rng.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                    rng.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+                    rng.Style.Font.Bold = true;
+                    rng.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    }
+
+                #endregion cabece
+
+                int rowNumber2 = 3;
+                foreach (var company in ListPendienteExtra.OrderBy(w => w.Descripcion))
+                    {
+                    worksheetPenExtra.Cells[rowNumber2, 2].Value = company.FechaOpe;
+                    worksheetPenExtra.Cells[rowNumber2, 3].Value = company.NroOpe;
+                    worksheetPenExtra.Cells[rowNumber2, 4].Value = company.Descripcion;
+                    worksheetPenExtra.Cells[rowNumber2, 5].Value = company.ImporteTransac;
+                    worksheetPenExtra.Cells[rowNumber2, 6].Value = company.ImporteAbono;
+                    worksheetPenExtra.Cells[rowNumber2, 7].Value = company.Importe;
+                    worksheetPenExtra.Cells[rowNumber2, 8].Value = company.Terminal;
+
+                    rowNumber2++;
+
+                    using (var range = worksheetPenExtra.Cells[rowNumber2, 3, rowNumber2, 8])
+                        {
+                        range.Style.Font.Bold = false;
+                        range.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                        range.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+                        range.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+                        range.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+                        range.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+                        range.Style.Font.Color.SetColor(Color.Black);
+                        range.Style.ShrinkToFit = true;
+                        }
+
+                    if (company.Whoyo == "MC")
+                        {//hay tres registros
+                        using (var range = worksheetPenExtra.Cells[rowNumber2, 3, rowNumber2, 6])
+                            {
+                            range.Style.Font.Bold = true;
+                            range.Style.Font.Color.SetColor(Color.Coral);
+                            }
+                        }
+                    if (company.Whoyo == "VN")
+                        {
+                        using (var range = worksheetPenExtra.Cells[rowNumber2, 3, rowNumber2, 6])
+                            {
+                            range.Style.Font.Bold = true;
+                            range.Style.Font.Color.SetColor(Color.DarkViolet);
+                            }
+                        }
+                    }
+
+
+                #endregion 
+                FileInfo fi = new FileInfo(@"C:\Excel\Conciliacion-comi.xlsx");
+                excelPackage.Workbook.Calculate();
+                excelPackage.SaveAs(fi);
+                excelPackage.Dispose();
+
+
+
+
+                }
+          
+
+            }
+        private void BtnImportar_Click(object sender, EventArgs e)
+            {
+            listaBancos = new List<BancoBCP>();
+            listaMayorUpeu = new List<BancoUpeu>();
+            listaPendConMayorUpeu = new List<BancoUpeu>();
+            listaPendConBancos = new List<BancoBCP>();
+            listaBancoVisa = new List<BancoBCP>();
+            listaMayorVisa = new List<BancoUpeu>();
+            termino = 0;
+
+
+            using (OpenFileDialog diag1 = new OpenFileDialog() { Filter = "Excel Workbook|*.xlsx", ValidateNames = true, InitialDirectory = Application.StartupPath + "\\Plantilla"})
+                {
+                if (diag1.ShowDialog() == DialogResult.OK)
+                    {
+
+                    // CargaExcel(diag);
+                    diag = diag1;
+
+                    //this.BtnProcesar.Visible = true;
+                    this.label7.Visible = true;
+                    this.label7.Text = diag1.FileName;
+                    this.BtnLeerDatos.Visible = true;
+                    this.BtnLeerDatos.Focus();
+
+                    }
+
+                }
+            }
+
+      
+
+        private void BtnProcesar_Click(object sender, EventArgs e)
+            {
+            this.Timer1.Start();
+
+            this.progressBar1.Visible = true;
+           // backgroundWorker1.WorkerReportsProgress = true;
+            backgroundWorker1.RunWorkerAsync();
+
+            }
+             
+
+        private void Form1_Load(object sender, EventArgs e)
+            {
+            this.BtnProcesar.Visible = false;
+            this.progressBar1.Visible = false;
+            this.label7.Visible = false;
+            this.BtnLeerDatos.Visible = false;
+            ExcelUtil.conectar();
+            }
+
+        private void BtnFpend_Click(object sender, EventArgs e)
+            {
+            frmImages objima = new frmImages();
+            if (objima.ShowDialog()== DialogResult.OK)
+                {
+
+                }
+            }
+
+        private void BtnFUpeu_Click(object sender, EventArgs e)
+            {
+            frmImageUpeu objima = new frmImageUpeu();
+            if (objima.ShowDialog() == DialogResult.OK)
+                {
+
+                }
+            }
+
+        private void BtnFBanco_Click(object sender, EventArgs e)
+            {
+            frmImageBanco objima = new frmImageBanco();
+            if (objima.ShowDialog() == DialogResult.OK)
+                {
+
+                }
+            }
+
+      
+
+        private void backgroundWorker1_DoWork(object sender, DoWorkEventArgs e)
+            {
+            ProcesarDatos();
+            }
+
+        private void backgroundWorker1_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+            {
+            DivujaExcel();
+           
+            }
+       
+
+        private void backgroundWorker1_ProgressChanged(object sender, ProgressChangedEventArgs e)
+            {
+            // this.progressBar1.Value = e.ProgressPercentage;
+           
+                }
+
+       
+
+        private void Timer1_Tick(object sender, EventArgs e)
+            {
+            if (!check)
+                {
+                if (progressBar1.Value < progressBar1.Maximum) { progressBar1.Value++; } else { check = true; }
+                }
+            else
+                {
+                if (progressBar1.Value > progressBar1.Minimum)
+                    {
+                    progressBar1.Value--;
+                    }
+                else
+                    {
+                    check = false;
+                    }
+                }
+
+            }
+
+        private void BtnOpen_Click(object sender, EventArgs e)
+            {
+            Process.Start("explorer.exe", Application.StartupPath+"\\Excel");
+            }
+
+        private void BtnImportaTarjetas_Click(object sender, EventArgs e)
+            {
+           
+            this.Timer1.Start();
+
+            this.progressBar1.Visible = true;
+            // backgroundWorker1.WorkerReportsProgress = true;
+            backgroundWorker2.RunWorkerAsync();
+            }
+
+        private void backgroundWorker2_DoWork(object sender, DoWorkEventArgs e)
+            {
+            CargaExcel();
+            }
+
+        private void backgroundWorker2_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+            {
+            ExceltoList(dtc);
+            this.Timer1.Stop();
+            this.progressBar1.Visible = false;
+            if (termino ==0)
+                {
+            this.BtnProcesar.Visible = true;
+            lblCantTerminal.Text = listaCafetin.Count.ToString();
+            lblCantTerAgrupa.Text = listaCafetinGroup.Count.ToString();
+            int pendientes = listaPendConBancos.Count + listaPendConMayorUpeu.Count;
+            lblCantPendiente.Text = pendientes.ToString();
+            this.lblCantMU.Text = listaMayorUpeu.Count.ToString();
+            this.lblCantMUVisa.Text = listaMayorVisa.Count.ToString();
+
+            this.lblCantMB.Text = listaBancos.Count.ToString();
+            this.lblCantMBVisa.Text = listaBancoVisa.Count.ToString();
+            //this.dataGridView1.DataSource = dtVisanet;
+                }
+           
+            }
+
+        private void BtnComisiones_Click(object sender, EventArgs e)
+            {
+            ProcesaSolComisionGroup();
+            DivujaExcelOnly();
+            MessageBox.Show(this, "Fin proceso..");
+            }
+        public void ProcesaSolComisionGroup()
+            {
+            ComparabancosUpeu objCompupe;
+
+            var listaTer = ExcelUtil.GetDescripcionTer();
+            foreach (var itemv in listaCafetinGroup)
+                {
+                if (itemv.NetoAbonar == (decimal)55363.16)
+                    {
+                    string le = string.Empty;
+                    }
+                string desc = listaTer.Where(w => w.Terminal == itemv.CodigoPos).First().Descripcion;
+
+                objCompupe = new ComparabancosUpeu { FechaOpe = DateTime.Parse(itemv.FechaAbono), Descripcion = desc, NroOpe = "", Importe = itemv.Diferencia, ImporteAbono = itemv.NetoAbonar, ImporteTransac = itemv.ImporteTran, Dh = 1, Terminal = itemv.CodigoPos, Observacion = "Diferencia", Whoyo = itemv.Whoyo };
+                ListPendienteExtra.Add(objCompupe);
+                }
+
+            var Visan = listaBancoVisa.Where(W => W.Descripcion.Contains("ENT. CREDIBANK VISANET")).ToList();
+            var mcard = listaBancoVisa.Where(W => W.Descripcion.Contains("PROCESOS DE")).ToList();
+            var Amex = listaBancoVisa.Where(W => W.Descripcion.Contains("CIA DE SERV")).ToList();
+
+            //foreach (var item in Visan)
+            //    {
+            //    DateTime leo = new DateTime(item.FechaOperacion.Year, item.FechaOperacion.Month, item.FechaOperacion.Day);
+            //    if (item.Importe == (decimal)55363.16)
+            //        {
+            //       string le =  string.Empty;
+            //        }
+            //    var resu = listaCafetinGroup.Where(w => w.FechaAbono == item.FechaOperacion.AddDays(1).ToShortDateString() && w.NetoAbonar == item.Importe).ToList();
+            //    }
+            }
+        private void progressBar1_Click(object sender, EventArgs e)
+            {
+
+            }
+        }
+
+    }
